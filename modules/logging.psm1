@@ -185,12 +185,16 @@ function Escrever-Log {
                 $jsonString = $bodyObject | ConvertTo-Json -Compress
                 $utf8Bytes  = [System.Text.Encoding]::UTF8.GetBytes($jsonString)
 
+                # FIX (v1.2.2): Edge Functions do Supabase exigem "Authorization:
+                # Bearer" (verificacao de JWT do proprio portao de entrada) -
+                # "apikey" sozinho retorna 401 Unauthorized. A anon key ja e
+                # um JWT valido (role=anon), serve para os dois cabecalhos.
                 $null = Invoke-RestMethod `
                     -Uri         $Global:SUPABASE_URL_LOG `
                     -Method      Post `
                     -Body        $utf8Bytes `
                     -ContentType "application/json; charset=utf-8" `
-                    -Headers     @{ "apikey" = $Global:SUPABASE_ANON_LOG } `
+                    -Headers     @{ "apikey" = $Global:SUPABASE_ANON_LOG; "Authorization" = "Bearer $($Global:SUPABASE_ANON_LOG)" } `
                     -TimeoutSec  3 `
                     -ErrorAction SilentlyContinue
 

@@ -531,12 +531,17 @@ Escrever-Log -Mensagem "=== INICIO Agent IT ===" -FunctionName "MAIN"
 $updateCheckResult = $null
 
 try {
+    # FIX (v1.2.2): Edge Functions do Supabase exigem "Authorization: Bearer"
+    # (verificacao de JWT feita pelo proprio portao de entrada do Supabase,
+    # antes mesmo do codigo da funcao rodar) - so "apikey" sozinho retorna
+    # 401 Unauthorized. A anon key JA E um JWT valido (role=anon), entao
+    # serve para os dois cabecalhos.
     $updateCheckResult = Invoke-RestMethod `
         -Uri         $SUPABASE_URL `
         -Method      Post `
         -Body        '{}' `
         -ContentType "application/json" `
-        -Headers     @{ "apikey" = $SUPABASE_ANON } `
+        -Headers     @{ "apikey" = $SUPABASE_ANON; "Authorization" = "Bearer $SUPABASE_ANON" } `
         -TimeoutSec  10 `
         -ErrorAction Stop
 
