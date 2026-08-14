@@ -47,8 +47,8 @@ $OutputEncoding = [System.Text.Encoding]::UTF8
 # "environment" (production/staging) vem de $Global:Environment,
 # definido no main.ps1 - reflete o mesmo texto usado la.
 # ==============================================================
-# $Global:SUPABASE_URL_LOG  = "https://SEU-PROJETO.supabase.co/functions/v1/log-event"
-# $Global:SUPABASE_ANON_LOG = "SUPABASE-ANON-KEY-AQUI"
+$Global:SUPABASE_URL_LOG  = "https://sluhfuoazyykrhhgestg.supabase.co/functions/v1/log-event"
+$Global:SUPABASE_ANON_LOG = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNsdWhmdW9henl5a3JoaGdlc3RnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY3MzE4OTgsImV4cCI6MjEwMjMwNzg5OH0.TmUVK4zf9_d-DGXAnl141zopV9ZvoVUwYeqtqN64xPg"
 
 # ==============================================================
 # HELPER: Normalize-StringUTF8
@@ -139,7 +139,14 @@ function Escrever-Log {
     #   details        -> o texto legivel ($Mensagem) para o usuario ver
     #                     "o que aconteceu" sem precisar decifrar codigos
     # ==============================================================
-    <#
+    # ==============================================================
+    # ATIVADO (v1.2.1): credenciais reais preenchidas acima.
+    # Seguro deixar ativo mesmo antes do deploy da Edge Function
+    # "log-event" - a chamada tem timeout de 3s e ignora qualquer
+    # erro em silencio (o log local sempre continua sendo a fonte
+    # de verdade). Ate o deploy acontecer, essas chamadas so falham
+    # sem nenhum efeito colateral.
+    # ==============================================================
     if ($Action -and $Global:SUPABASE_URL_LOG -and $Global:SUPABASE_ANON_LOG) {
 
         # Skip internal step markers that would flood the events table
@@ -192,7 +199,6 @@ function Escrever-Log {
             }
         }
     }
-    #>
 }
 
 Export-ModuleMember -Function Escrever-Log

@@ -94,14 +94,14 @@ $Global:Environment = "PRODUCTION"   # Trocar para "STAGING" na build de teste
 # Supabase (nao precisa de projeto separado) - so apontam pra
 # branches diferentes do GitHub (main vs staging) e tem seu proprio
 # CURRENT_VERSION independente.
-$SUPABASE_URL_PROD    = "https://SEU-PROJETO.supabase.co/functions/v1/get-modules-prod"
-$SUPABASE_URL_STAGING = "https://SEU-PROJETO.supabase.co/functions/v1/get-modules-staging"
+$SUPABASE_URL_PROD    = "https://sluhfuoazyykrhhgestg.supabase.co/functions/v1/get-modules-prod"
+$SUPABASE_URL_STAGING = "https://sluhfuoazyykrhhgestg.supabase.co/functions/v1/get-modules-staging"
 
 $SUPABASE_URL = if ($Global:Environment -eq "STAGING") { $SUPABASE_URL_STAGING } else { $SUPABASE_URL_PROD }
 
 # Supabase anon public key (safe to expose - read-only access)
 # A mesma anon key serve para as duas Edge Functions (mesmo projeto).
-$SUPABASE_ANON = "SUPABASE-ANON-KEY-AQUI"
+$SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNsdWhmdW9henl5a3JoaGdlc3RnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY3MzE4OTgsImV4cCI6MjEwMjMwNzg5OH0.TmUVK4zf9_d-DGXAnl141zopV9ZvoVUwYeqtqN64xPg"
 # ==============================================================
 
 # Local paths
