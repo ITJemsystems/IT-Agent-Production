@@ -15,10 +15,18 @@
 #            Command: powershell.exe -ExecutionPolicy Bypass -File install.ps1
 #
 # INTUNE PACKAGING:
-#   Use the Microsoft Win32 Content Prep Tool to wrap this folder
-#   in a .intunewin package:
-#     IntuneWinAppUtil.exe -c "C:\IT Support V3" -s install.ps1 -o "C:\output"
-#   Then upload to Intune -> Apps -> Windows -> Add (Win32)
+#   1. Coloque nesta mesma pasta: AgentIT.exe (ja assinado),
+#      install.ps1 (este arquivo), assets\ (icon.ico, logos), e
+#      JEMSystemsCodeSigning.cer (a parte publica do certificado -
+#      exportada uma vez com Export-Certificate, sem senha).
+#   2. Use o Microsoft Win32 Content Prep Tool para empacotar essa
+#      pasta inteira em um .intunewin:
+#        IntuneWinAppUtil.exe -c "C:\IT Support - JEM - Prod" -s install.ps1 -o "C:\output"
+#   3. Upload no Intune -> Apps -> Windows -> Add (Win32)
+#
+#   O pacote resultante ja contem tudo: instala o app E estabelece
+#   confianca no certificado de assinatura, sem precisar de nenhum
+#   perfil de configuracao separado no Intune.
 # ==============================================================
 
 # ==============================================================
@@ -55,6 +63,17 @@ if (Test-Path $certPath) {
 }
 #>
 
+# ==============================================================
+# OPCAO C (EM USO): certificado self-signed da JEM Systems
+# --------------------------------------------------------------
+# Diferente das opcoes A/B acima, o AgentIT.exe deste pacote ja
+# chega ASSINADO (assinatura feita uma unica vez, na maquina do
+# time de TI, com Set-AuthenticodeSignature, ANTES de gerar o
+# .intunewin). Este script nao assina nada - ele so precisa
+# ensinar cada maquina de destino a CONFIAR nessa assinatura,
+# que e o que o bloco logo abaixo faz (ver "CONFIANCA NO
+# CERTIFICADO", apos $SOURCE ser definido).
+# ==============================================================
 # Installation paths
 $INSTALL_DIR = "C:\ProgramData\IT Support Agent"
 $ASSETS_DIR  = "$INSTALL_DIR\assets"
@@ -63,6 +82,48 @@ $STARTMENU   = [Environment]::GetFolderPath("CommonPrograms")
 
 # Source path (where install.ps1 is located)
 $SOURCE = Split-Path -Parent $MyInvocation.MyCommand.Path
+
+# ==============================================================
+# CONFIANCA NO CERTIFICADO DE ASSINATURA (self-signed, JEM Systems)
+# --------------------------------------------------------------
+# O AgentIT.exe deste pacote ja vem ASSINADO com o certificado de
+# assinatura de codigo self-signed da JEM Systems (assinatura feita
+# uma vez, na maquina do time de TI, antes de gerar o .intunewin -
+# ver "OPCAO C" no comentario acima). O que falta em cada maquina
+# de destino e a CONFIANCA nesse certificado - sem isso, o Windows
+# ainda mostraria "Editor Desconhecido" mesmo com o arquivo assinado.
+#
+# Como este script roda como SYSTEM (via Intune), ele tem privilegio
+# para importar a parte PUBLICA do certificado (arquivo .cer, sem
+# senha, sem chave privada) para os repositorios de confianca da
+# maquina - Root (autoridades raiz confiaveis) e TrustedPublisher
+# (editores de software confiaveis). E exatamente o mesmo efeito dos
+# comandos Import-Certificate que o time de TI rodou manualmente na
+# propria maquina para testar - so que aqui roda uma vez por maquina,
+# automaticamente, durante a instalacao via Intune.
+#
+# REQUISITO: o arquivo "JEMSystemsCodeSigning.cer" precisa estar na
+# MESMA pasta que este install.ps1 (a mesma pasta usada como -c ao
+# gerar o .intunewin com o IntuneWinAppUtil.exe). Copie o .cer para
+# essa pasta antes de empacotar - ver instrucoes no topo do arquivo.
+#
+# Se o arquivo nao existir (ex.: alguem gerar o pacote sem copiar o
+# .cer por engano), a instalacao CONTINUA normalmente - so que o
+# Windows vai mostrar o aviso de editor desconhecido ao abrir o app,
+# ate esse passo ser corrigido e reinstalado.
+# ==============================================================
+$certFile = Join-Path $SOURCE "JEMSystemsCodeSigning.cer"
+
+if (Test-Path $certFile) {
+    try {
+        Import-Certificate -FilePath $certFile -CertStoreLocation "Cert:\LocalMachine\Root" -ErrorAction Stop | Out-Null
+        Import-Certificate -FilePath $certFile -CertStoreLocation "Cert:\LocalMachine\TrustedPublisher" -ErrorAction Stop | Out-Null
+    } catch {
+        # Nao bloqueia a instalacao se isso falhar - o app continua
+        # funcionando, so o aviso de "Editor Desconhecido" continuaria
+        # aparecendo ate o problema ser corrigido.
+    }
+}
 
 # Allow PowerShell scripts to run on this machine
 Set-ExecutionPolicy RemoteSigned -Scope LocalMachine -Force -ErrorAction SilentlyContinue
