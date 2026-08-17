@@ -132,12 +132,68 @@ Set-ExecutionPolicy RemoteSigned -Scope LocalMachine -Force -ErrorAction Silentl
 New-Item -ItemType Directory -Path $INSTALL_DIR -Force | Out-Null
 New-Item -ItemType Directory -Path $ASSETS_DIR  -Force | Out-Null
 
+# ==============================================================
+# FIX (v1.2.4): "Access to the path ... is denied" ao atualizar
+# version.txt em maquinas reais via Intune
+# --------------------------------------------------------------
+# CAUSA: este script roda como SYSTEM (via Intune), entao a pasta
+# $INSTALL_DIR e criada com permissao de escrita so para
+# Administradores/SYSTEM (padrao herdado de C:\ProgramData). Mas o
+# proprio AgentIT.exe, quando o usuario abre pelo atalho, roda com
+# a conta NORMAL (nao-admin) da pessoa logada - que so tinha
+# permissao de LEITURA nessa pasta, nao de escrita. Por isso a
+# atualizacao de version.txt (e qualquer outro arquivo que o app
+# precise gravar aqui) falhava com "Access denied", mesmo a
+# instalacao em si tendo funcionado perfeitamente.
+#
+# CORRECAO: concede permissao de Modify (leitura + escrita, sem dar
+# controle total) ao grupo "Users" nesta pasta especifica, de forma
+# recursiva - cobre tambem arquivos/pastas criados depois pelo
+# proprio app (version.txt, Logs\, etc.), nao so o que existe agora.
+# ==============================================================
+try {
+    icacls $INSTALL_DIR /grant "Users:(OI)(CI)M" /T | Out-Null
+} catch {
+    # Nao interrompe a instalacao se isso falhar - mas sem essa
+    # permissao, o app pode falhar ao gravar version.txt/logs depois
+}
+
 # Copy main executable
 Copy-Item "$SOURCE\AgentIT.exe" "$INSTALL_DIR\AgentIT.exe" -Force
 
 # Copy assets (logo, icon)
 if (Test-Path "$SOURCE\assets") {
     Copy-Item "$SOURCE\assets\*" $ASSETS_DIR -Recurse -Force
+}
+
+# ==============================================================
+# FIX (v1.2.5): copia local dos modulos como rede de seguranca
+# --------------------------------------------------------------
+# CAUSA DO INCIDENTE: o main.ps1 tenta cair para uma pasta local
+# "modules\" se o download do GitHub falhar (rede instavel, limite
+# de taxa da API, etc.) - mas essa pasta nunca existia em instalacoes
+# via Intune, entao qualquer falha de rede no momento da abertura
+# quebrava o app por completo, sem nenhum modulo carregado.
+#
+# CORRECAO: se a pasta "modules\" existir junto com este install.ps1
+# (mesma pasta usada para gerar o .intunewin), ela e copiada para
+# dentro da instalacao. Assim, se o download falhar, o app ainda
+# consegue abrir usando essa copia local - desatualizada, mas
+# funcional, em vez de quebrar completamente.
+#
+# IMPORTANTE: mantenha essa pasta "modules\" (ao lado do install.ps1,
+# antes de gerar o .intunewin) razoavelmente atualizada de tempos em
+# tempos - ela nao se atualiza sozinha, so o app baixado da internet
+# se atualiza. Uma pasta MUITO desatualizada aqui ainda e melhor que
+# nenhuma (o app abre em vez de quebrar), mas nao substitui manter o
+# GitHub/Supabase no ar normalmente.
+# ==============================================================
+$modulesSource = Join-Path $SOURCE "modules"
+$modulesTarget = Join-Path $INSTALL_DIR "modules"
+
+if (Test-Path $modulesSource) {
+    New-Item -ItemType Directory -Path $modulesTarget -Force | Out-Null
+    Copy-Item "$modulesSource\*" $modulesTarget -Recurse -Force
 }
 
 # Write initial version (0.0.0 forces auto-update on first run)

@@ -126,7 +126,13 @@ if ($PSScriptRoot) {
 
 # Normalize ScriptPath to avoid 8.3 short name issues (e.g. USURIO~2)
 # Always use ProgramData as base when running as installed .exe
-$ProgramDataPath = "C:\ProgramData\IT Support Agent"
+#
+# FIX (v1.2.5): faltava o $PastaSufixo aqui - $INSTALL_PATH e
+# $VERSION_FILE ja incluiam o sufixo de staging (" - STAGING"), mas
+# esta variavel nao, o que fazia a build de staging apontar pra pasta
+# de modules/assets da PRODUCAO por engano (risco de contaminacao
+# cruzada entre os dois ambientes).
+$ProgramDataPath = "C:\ProgramData\IT Support Agent$PastaSufixo"
 
 # Determine module path:
 # Use ProgramData\modules only if it exists AND has modules inside
@@ -727,6 +733,17 @@ $tempBase   = if ($isInstalled) { $ProgramDataPath } else { $env:TEMP }
 $tempFolder = Join-Path $tempBase ("ITAgent_" + [System.Guid]::NewGuid().ToString("N"))
 
 try {
+    # FIX (v1.2.5): antes, se um modulo falhasse no download E nao
+    # existisse localmente (caso normal de uma instalacao via Intune,
+    # que nunca tem uma pasta modules\ local), o codigo simplesmente
+    # NAO CARREGAVA o modulo, sem avisar nada aqui. O app so quebrava
+    # bem mais tarde, com erros confusos tipo "Launch-MainWindow is
+    # not recognized" - sem nenhuma pista do que realmente aconteceu.
+    # Agora rastreamos cada falha e mostramos um erro claro e acionavel
+    # assim que o carregamento termina, antes de qualquer outra coisa
+    # tentar rodar.
+    $failedModules = @()
+
     foreach ($modName in $loadOrder) {
 
         if ($Global:ModulesInMemory.ContainsKey($modName) -and
@@ -746,12 +763,31 @@ try {
             Remove-Item $tempFile -Force -ErrorAction SilentlyContinue
 
         } else {
-            # Fallback to local file (development or offline)
+            # Fallback to local file (development mode, ou instalacao
+            # via Intune que inclui uma copia local - ver install.ps1)
             $localPath = Join-Path $LocalModulePath $modName
             if (Test-Path $localPath) {
                 Import-Module $localPath -Force -Global -WarningAction SilentlyContinue -ErrorAction Stop
+            } else {
+                # Nem o download nem o fallback local funcionaram para
+                # este modulo - registra para avisar o usuario a seguir
+                $failedModules += $modName
             }
         }
+    }
+
+    if ($failedModules.Count -gt 0) {
+        Add-Type -AssemblyName System.Windows.Forms
+        $listaModulos = $failedModules -join "`n  - "
+        [System.Windows.Forms.MessageBox]::Show(
+            "Nao foi possivel carregar os seguintes componentes do Agent IT:`n`n  - $listaModulos`n`n" +
+            "Isso geralmente acontece por instabilidade de rede/internet no momento da abertura.`n`n" +
+            "Feche e abra o Agent IT novamente. Se o problema persistir, contate o suporte de TI.",
+            "Agent IT - Falha ao Carregar",
+            [System.Windows.Forms.MessageBoxButtons]::OK,
+            [System.Windows.Forms.MessageBoxIcon]::Error
+        ) | Out-Null
+        exit
     }
 
 } catch {
