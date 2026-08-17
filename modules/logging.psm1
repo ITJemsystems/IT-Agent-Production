@@ -7,7 +7,15 @@
 #   locally to a dated .txt file on the machine.
 #
 # LOCAL LOG LOCATION:
-#   C:\IT Support Agent\Logs\Log_YYYY-MM-DD.txt
+#   C:\ProgramData\IT Support Agent\Logs\Log_YYYY-MM-DD.txt
+#
+# FIX (v1.2.4): antes era "C:\IT Support Agent\Logs" - uma pasta na
+# RAIZ do C:\, que por padrao so Administradores conseguem criar/
+# escrever (mesmo bug de permissao corrigido no install.ps1 para o
+# version.txt). Usuarios comuns recebiam "Access denied" ao tentar
+# gravar o log. Corrigido para gravar dentro da propria pasta de
+# instalacao (C:\ProgramData\IT Support Agent), que ja recebe
+# permissao de escrita para o grupo "Users" via icacls no install.ps1.
 #
 # DASHBOARD INTEGRATION (comentado - ativar na empresa):
 #   O bloco marcado com [DASHBOARD] envia eventos para o Supabase
@@ -78,9 +86,20 @@ function Escrever-Log {
     )
 
     # Create local log directory if needed
-    $pastaLog = "C:\IT Support Agent\Logs"
-    if (!(Test-Path $pastaLog)) {
-        New-Item -ItemType Directory -Path $pastaLog | Out-Null
+    # FIX (v1.2.4): movido da raiz de C:\ (sem permissao para usuario
+    # comum) para dentro da pasta de instalacao, que ja recebe
+    # permissao de escrita explicita via icacls no install.ps1.
+    $pastaLog = "C:\ProgramData\IT Support Agent\Logs"
+    try {
+        if (!(Test-Path $pastaLog)) {
+            New-Item -ItemType Directory -Path $pastaLog -Force -ErrorAction Stop | Out-Null
+        }
+    } catch {
+        # Se nem isso for possivel (ex.: instalacao antiga, sem a
+        # correcao de permissao ainda aplicada), o log local fica
+        # indisponivel nesta execucao - mas o app continua funcionando
+        # normalmente em vez de travar aqui.
+        return
     }
 
     $arquivoLog   = "$pastaLog\Log_$(Get-Date -Format yyyy-MM-dd).txt"
@@ -109,7 +128,12 @@ function Escrever-Log {
     }
 
     # Write to local log file with explicit UTF-8 encoding
-    Add-Content -Path $arquivoLog -Value $linhaLog -Encoding UTF8
+    try {
+        Add-Content -Path $arquivoLog -Value $linhaLog -Encoding UTF8 -ErrorAction Stop
+    } catch {
+        # Mesma logica de tolerancia a falha do bloco acima - log
+        # local indisponivel nesta execucao, app continua normalmente.
+    }
 
     # ==============================================================
     # [DASHBOARD] ENVIO REMOTO - Supabase da empresa

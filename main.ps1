@@ -678,12 +678,26 @@ if ($updateNeeded) {
 
     # Save version.txt ONLY if ALL modules were downloaded successfully.
     # Partial download must NOT update version.txt - forces retry next startup.
+    #
+    # FIX (v1.2.4): escrita agora protegida por try/catch. Antes, se a
+    # pasta nao tivesse permissao de escrita para o usuario comum (bug
+    # de ACL corrigido no install.ps1 - ver comentario la), este
+    # Set-Content lancava um erro nao tratado, travando o app com uma
+    # tela de erro visivel para o usuario. Agora, se a escrita falhar
+    # por qualquer motivo, o app simplesmente continua normalmente -
+    # o unico efeito colateral e checar a atualizacao de novo na
+    # proxima abertura, em vez de lembrar que ja atualizou.
     $modulesDownloaded = $Global:ModulesInMemory.Count
     if ($modulesDownloaded -eq $moduleNames.Count) {
-        if (-not (Test-Path $INSTALL_PATH)) {
-            New-Item -ItemType Directory -Path $INSTALL_PATH -Force | Out-Null
+        try {
+            if (-not (Test-Path $INSTALL_PATH)) {
+                New-Item -ItemType Directory -Path $INSTALL_PATH -Force | Out-Null
+            }
+            Set-Content -Path $VERSION_FILE -Value $latestVersion -Encoding UTF8 -ErrorAction Stop
+        } catch {
+            # Nao trava o app - so significa que vai checar de novo
+            # na proxima abertura. Ver FIX (v1.2.4) acima.
         }
-        Set-Content -Path $VERSION_FILE -Value $latestVersion -Encoding UTF8
     }
 
     # If download was incomplete, clear memory and use local files
