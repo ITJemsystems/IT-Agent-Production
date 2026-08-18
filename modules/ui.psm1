@@ -978,7 +978,7 @@ function Launch-MainWindow {
     $window.FindName("TitleBar").Add_MouseLeftButtonDown({ param($s,$e) $window.DragMove() })
     $window.FindName("BtnMinimize").Add_Click({ $window.WindowState = "Minimized" })
     $window.FindName("BtnClose").Add_Click({
-        Escrever-Log -Mensagem "App closed" -FunctionName "UI" -Action "AppClose" -Status "INFO"
+        Escrever-Log -Mensagem "App closed" -FunctionName "SYSTEM" -Action "AppClose" -Status "INFO"
         $window.Close()
     })
 
@@ -1092,7 +1092,7 @@ function Launch-MainWindow {
     }
 
     $window.FindName("BtnExit").Add_Click({
-        Escrever-Log -Mensagem "App closed" -FunctionName "UI" -Action "AppClose" -Status "INFO"
+        Escrever-Log -Mensagem "App closed" -FunctionName "SYSTEM" -Action "AppClose" -Status "INFO"
         $window.Close()
         [Environment]::Exit(0)
     })
@@ -1113,7 +1113,7 @@ function Launch-MainWindow {
             [Environment]::Exit(0)
         } catch {
             # User cancelled UAC or insufficient rights — stay in current window
-            Escrever-Log -Mensagem "Admin mode cancelled or UAC denied" -FunctionName "UI" -Action "AdminModeCancelled" -Status "WARNING"
+            Escrever-Log -Mensagem "Admin mode cancelled or UAC denied" -FunctionName "ADMIN" -Action "AdminModeCancelled" -Status "WARNING"
         }
     })
 
@@ -1127,12 +1127,37 @@ function Launch-MainWindow {
     # ==================================================================
     if ($Global:AdminMode) {
         # Hide all standard menu items
+        # FIX (v1.3.1): faltava "BtnClickUp" nesta lista - foi escrita
+        # antes do botao do ClickUp existir, e nunca foi atualizada
+        # quando ele foi adicionado depois. Por isso o ClickUp era o
+        # UNICO item do sidebar normal que continuava visivel dentro
+        # do Modo Admin, enquanto todos os outros eram escondidos
+        # corretamente.
         @("BtnOutlook","BtnTeams","BtnWhatsApp","BtnZoom","Btn8x8Work","BtnAnyDesk",
-          "BtnSlack","BtnOneDrive","BtnDrive","BtnChrome","BtnDropbox",
+          "BtnSlack","BtnClickUp","BtnOneDrive","BtnDrive","BtnChrome","BtnDropbox",
           "BtnClean","BtnNetwork","BtnDiag","BtnRegistry","BtnIPDNS") | ForEach-Object {
             $b = $window.FindName($_)
             if ($b) { $b.Visibility = "Collapsed" }
         }
+
+        # ==============================================================
+        # DIAGNOSTICO TEMPORARIO - remover depois de confirmar a causa
+        # --------------------------------------------------------------
+        # Mostra na tela, com certeza absoluta, o que esta acontecendo
+        # com o BtnClickUp neste exato momento da execucao: se foi
+        # encontrado pelo FindName, e qual Visibility ele ficou logo
+        # apos o loop de ocultacao rodar.
+        # ==============================================================
+        $diagBtn = $window.FindName("BtnClickUp")
+        Add-Type -AssemblyName System.Windows.Forms
+        [System.Windows.Forms.MessageBox]::Show(
+            "DIAGNOSTICO BtnClickUp`n`nEncontrado pelo FindName: $($null -ne $diagBtn)`nVisibility apos o loop: $(if ($diagBtn) { $diagBtn.Visibility } else { 'N/A - nao encontrado' })",
+            "Diagnostico Temporario"
+        ) | Out-Null
+        # ==============================================================
+        # FIM DO DIAGNOSTICO TEMPORARIO
+        # ==============================================================
+
         # Hide standard section headers
         @("SectionComm","SectionProd","SectionSys") | ForEach-Object {
             $el = $window.FindName($_)
@@ -1189,7 +1214,7 @@ function Launch-MainWindow {
         Set-ButtonHover -btn $window.FindName("BtnDiscoSMART") -NC "Transparent" -HC "#3D1147"
         Set-ButtonHover -btn $window.FindName("BtnSyncEntra")  -NC "Transparent" -HC "#3D1147"
 
-        Escrever-Log -Mensagem "Admin mode activated" -FunctionName "UI" -Action "AdminModeStart" -Status "INFO"
+        Escrever-Log -Mensagem "Admin mode activated" -FunctionName "ADMIN" -Action "AdminModeStart" -Status "INFO"
     }
 
     $window.FindName("BtnClearLog").Add_Click({
@@ -1302,7 +1327,7 @@ function Launch-MainWindow {
                 $Global:WPF.StatusDot.Fill  = [Windows.Media.BrushConverter]::new().ConvertFromString("#E05050")
                 $Global:WPF.StatusText.Text = "Error"
             }, [Windows.Threading.DispatcherPriority]::Render)
-            Escrever-Log -Mensagem "UI Error: $_" -FunctionName "UI" -Action "RunError" -Status "ERROR"
+            Escrever-Log -Mensagem "UI Error: $_" -FunctionName "SYSTEM" -Action "RunError" -Status "ERROR"
         } finally {
             Start-Sleep -Milliseconds 1500
             $Global:ProgressCurrent = 0

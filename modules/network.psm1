@@ -38,7 +38,7 @@ function Diagnostico-Rede {
 
     # Step 1 (20%): Detect the first active network adapter and collect IP info
     Barra-Progresso (Get-Text "Step.Net.Interface")
-    Escrever-Log -Mensagem "=== INICIO DIAGNOSTICO DE REDE ===" -FunctionName "INTERNET" -Action "DiagStart" -Status "INFO"
+    Escrever-Log -Mensagem "=== INICIO DIAGNOSTICO DE REDE ===" -FunctionName "NETWORK" -Action "DiagStart" -Status "INFO"
 
     $adapter = Get-NetAdapter | Where-Object { $_.Status -eq "Up" } | Select-Object -First 1
     if (-not $adapter) {
@@ -52,7 +52,7 @@ function Diagnostico-Rede {
     $ipv4       = $ipInfo.IPv4Address.IPAddress
     $gateway    = $ipInfo.IPv4DefaultGateway.NextHop
     $dnsServers = ($ipInfo.DnsServer.ServerAddresses -join ", ")
-    Escrever-Log -Mensagem "Interface=$interface | IP=$ipv4 | Gateway=$gateway | Speed=$speed" -FunctionName "INTERNET" -Action "InterfaceDetect" -Status "INFO"
+    Escrever-Log -Mensagem "Interface=$interface | IP=$ipv4 | Gateway=$gateway | Speed=$speed" -FunctionName "NETWORK" -Action "InterfaceDetect" -Status "INFO"
 
     # Step 2 (40%): Test latency - threshold is 15ms (corporate standard)
     Barra-Progresso (Get-Text "Step.Net.Latency")
@@ -60,10 +60,17 @@ function Diagnostico-Rede {
     $avgPing = ($ping | Measure-Object ResponseTime -Average).Average
     if ($avgPing) {
         $pingRounded = [math]::Round($avgPing, 1)
-        Escrever-Log -Mensagem "Latencia=$pingRounded ms" -FunctionName "INTERNET" -Action "LatencyTest" -Status $(if ($pingRounded -gt 15) {"WARNING"} else {"SUCCESS"})
+        # FIX (v1.3.0): mensagem mais clara e direta para leitura na
+        # dashboard, em vez de so o numero cru "Latencia=X ms".
+        $pingMsg = if ($pingRounded -gt 15) {
+            "Ping acima do esperado: $pingRounded ms (limite: 15ms)"
+        } else {
+            "Ping dentro do esperado: $pingRounded ms (menor que 15ms)"
+        }
+        Escrever-Log -Mensagem $pingMsg -FunctionName "NETWORK" -Action "LatencyTest" -Status $(if ($pingRounded -gt 15) {"WARNING"} else {"SUCCESS"}) -MetricValue $pingRounded -MetricUnit "ms"
     } else {
         $pingRounded = $null
-        Escrever-Log -Mensagem "Sem resposta de latencia" -FunctionName "INTERNET" -Action "LatencyTest" -Status "FAIL"
+        Escrever-Log -Mensagem "Sem resposta de latencia (host de teste inacessivel)" -FunctionName "NETWORK" -Action "LatencyTest" -Status "FAIL"
     }
 
     # Step 3 (60%): Test DNS resolution - resolves google.com as a known reliable domain
@@ -71,34 +78,59 @@ function Diagnostico-Rede {
     try {
         Resolve-DnsName google.com -ErrorAction Stop | Out-Null
         $dnsOk = $true
-        Escrever-Log -Mensagem "DNS OK" -FunctionName "INTERNET" -Action "DNSTest" -Status "SUCCESS"
+        Escrever-Log -Mensagem "Resolucao de DNS funcionando normalmente" -FunctionName "NETWORK" -Action "DNSTest" -Status "SUCCESS"
     } catch {
         $dnsOk = $false
-        Escrever-Log -Mensagem "DNS FALHOU" -FunctionName "INTERNET" -Action "DNSTest" -Status "FAIL"
+        Escrever-Log -Mensagem "Erro de DNS: nao foi possivel resolver nomes de dominio" -FunctionName "NETWORK" -Action "DNSTest" -Status "FAIL"
     }
 
     # Step 4 (80%): Auto-repair if latency > 15ms OR DNS failed
     # flushdns clears stale DNS cache
     # release+renew requests a new IP from DHCP (no effect on static IPs)
+    #
+    # FIX (v1.3.0): antes, flush+release+renew eram logados como UM
+    # evento combinado ("Reparos aplicados (flushdns+release+renew)").
+    # Agora cada passo gera seu proprio evento com mensagem clara,
+    # para a dashboard mostrar exatamente qual reparo foi aplicado -
+    # ex: "Flush DNS aplicado com sucesso" separado de "IP renovado
+    # com sucesso", em vez de um texto so misturando os dois.
     Barra-Progresso (Get-Text "Step.Net.Repair")
     $precisaReparo  = ($pingRounded -gt 15 -or -not $dnsOk)
     $reparoAplicado = $false
     if ($precisaReparo) {
+        try {
             & "$env:SystemRoot\System32\ipconfig.exe" /flushdns | Out-Null
-        & "$env:SystemRoot\System32\ipconfig.exe" /release  | Out-Null
-        Start-Sleep -Seconds 2
-        & "$env:SystemRoot\System32\ipconfig.exe" /renew    | Out-Null
-        Start-Sleep -Seconds 3
+            Escrever-Log -Mensagem "Flush DNS aplicado com sucesso" -FunctionName "NETWORK" -Action "FlushDNS" -Status "SUCCESS"
+        } catch {
+            Escrever-Log -Mensagem "Falha ao aplicar Flush DNS" -FunctionName "NETWORK" -Action "FlushDNS" -Status "ERROR"
+        }
+
+        try {
+            & "$env:SystemRoot\System32\ipconfig.exe" /release | Out-Null
+            Start-Sleep -Seconds 2
+            & "$env:SystemRoot\System32\ipconfig.exe" /renew   | Out-Null
+            Start-Sleep -Seconds 3
+            Escrever-Log -Mensagem "IP renovado com sucesso" -FunctionName "NETWORK" -Action "RenewIP" -Status "SUCCESS"
+        } catch {
+            Escrever-Log -Mensagem "Falha ao renovar IP" -FunctionName "NETWORK" -Action "RenewIP" -Status "ERROR"
+        }
+
         $reparoAplicado = $true
-            Escrever-Log -Mensagem "Reparos aplicados (flushdns+release+renew)" -FunctionName "INTERNET" -Action "AutoFixDone" -Status "SUCCESS"
     } else {
-            Escrever-Log -Mensagem "Internet saudavel" -FunctionName "INTERNET" -Action "InternetHealthy" -Status "SUCCESS"
+        Escrever-Log -Mensagem "Internet saudavel - nenhum reparo necessario" -FunctionName "NETWORK" -Action "InternetHealthy" -Status "SUCCESS"
     }
 
     # Step 5 (100%): Check Wi-Fi driver version via WMI (Win32_PnPSignedDriver)
     Barra-Progresso (Get-Text "Step.Net.Wifi")
     $wifiInfo = Get-WifiDriverInfo
-    Escrever-Log -Mensagem "=== FIM DIAGNOSTICO ===" -FunctionName "INTERNET" -Action "DiagEnd" -Status "INFO"
+
+    # FIX (v1.3.0): evento final de resumo, com nome de acao proprio
+    # (nao generico "DiagEnd") para servir de "Diagnostico executado"
+    # na dashboard - um unico evento que marca claramente que o
+    # diagnostico completo rodou, com o resultado geral resumido.
+    $resumoStatus = if (-not $dnsOk) { "WARNING" } elseif ($pingRounded -gt 15) { "WARNING" } else { "SUCCESS" }
+    $resumoMsg    = "Diagnostico de rede executado - " + $(if ($resumoStatus -eq "SUCCESS") { "sem problemas encontrados" } else { "problemas encontrados e reparo tentado" })
+    Escrever-Log -Mensagem $resumoMsg -FunctionName "NETWORK" -Application "Diagnostico de Rede" -Action "DiagnosticoExecutado" -Status $resumoStatus
 
     Mostrar-Resultado-Rede -interface $interface -tipo $tipo -speed $speed -ipv4 $ipv4 `
         -pingRounded $pingRounded -dnsOk $dnsOk -reparoAplicado $reparoAplicado -wifiInfo $wifiInfo
@@ -192,7 +224,7 @@ function Get-WifiDriverInfo {
     } else {
         if ($Global:Language -eq "EN") {"Driver up to date"} else {"Driver atualizado"}
     }
-    Escrever-Log -Mensagem "WiFi: $modeloDetectado | Atual=$versaoAtual | Min=$($result.VersaoMinima) | Desatualizado=$desatualizado" -FunctionName "INTERNET" -Action "WifiDriverCheck" -Status $(if ($desatualizado) {"WARNING"} else {"SUCCESS"})
+    Escrever-Log -Mensagem "WiFi: $modeloDetectado | Atual=$versaoAtual | Min=$($result.VersaoMinima) | Desatualizado=$desatualizado" -FunctionName "NETWORK" -Action "WifiDriverCheck" -Status $(if ($desatualizado) {"WARNING"} else {"SUCCESS"})
     return $result
 }
 

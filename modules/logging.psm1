@@ -82,7 +82,12 @@ function Escrever-Log {
         [string]$Action,          # Specific action code (e.g. "Opened", "Closed")
         [string]$Status = "INFO", # INFO | SUCCESS | WARNING | ERROR | FAIL | EXECUTED
         [string]$Details,         # Optional extra key=value pairs for debugging
-        [string]$Application      # App name (e.g. "Microsoft Teams")
+        [string]$Application,     # App name (e.g. "Microsoft Teams")
+        # FIX (v1.3.0): par generico para metricas numericas agregaveis
+        # na dashboard (GB liberados, entradas de registro limpas, etc.)
+        # - ver comentario detalhado mais abaixo, no bloco [DASHBOARD].
+        [Nullable[double]]$MetricValue = $null,
+        [string]$MetricUnit
     )
 
     # Create local log directory if needed
@@ -120,9 +125,13 @@ function Escrever-Log {
     # Action. Corrigido para sempre incluir $Mensagem; $Details continua
     # disponivel como extra opcional, anexado se algum dia for usado.
     if ($Action) {
-        $appTag     = if ($Application) { "[APP:$Application]" } else { "" }
+        $appTag       = if ($Application) { "[APP:$Application]" } else { "" }
         $extraDetails = if ($Details) { " $Details" } else { "" }
-        $linhaLog   = "[$dataHora] [PC:$ComputerName] [User:$UserName] [$funcao] $appTag [Action:$Action] [Status:$Status] $Mensagem$extraDetails"
+        # FIX (v1.3.0): anexa a metrica numerica ao log local tambem,
+        # quando informada - so para facilitar leitura manual do log;
+        # o valor "de verdade" para agregacao vai no bodyObject abaixo.
+        $metricTag    = if ($null -ne $MetricValue) { " [Metric:$MetricValue$MetricUnit]" } else { "" }
+        $linhaLog     = "[$dataHora] [PC:$ComputerName] [User:$UserName] [$funcao] $appTag [Action:$Action] [Status:$Status] $Mensagem$extraDetails$metricTag"
     } else {
         $linhaLog = "[$dataHora] [PC:$ComputerName] [User:$UserName] [$funcao] $Mensagem"
     }
@@ -204,6 +213,8 @@ function Escrever-Log {
                     action       = $Action
                     status       = $Status
                     details      = $mensagemClean
+                    metric_value = $MetricValue
+                    metric_unit  = if ($MetricUnit) { $MetricUnit } else { $null }
                 }
 
                 $jsonString = $bodyObject | ConvertTo-Json -Compress

@@ -546,7 +546,10 @@ function Limpar-PC {
     $freedGB  = [math]::Round(($sizeBefore - $sizeAfter) / 1GB, 2)
     $beforeGB = [math]::Round($sizeBefore / 1GB, 2)
     WPF-Log "Espaco liberado: $freedGB GB" -Color "#3EA384"
-    Escrever-Log -Mensagem "Limpeza concluida | FreedSpace=$freedGB GB" -FunctionName "SYSTEM" -Application "PC Cleanup" -Action "CleanupFinished" -Status "SUCCESS"
+    # FIX (v1.3.0): -MetricValue/-MetricUnit tornam o "GB liberado" um
+    # numero agregavel na dashboard (SUM), em vez de so texto dentro de
+    # "details" que so dava para ler, nao para somar entre varias execucoes.
+    Escrever-Log -Mensagem "Limpeza concluida | FreedSpace=$freedGB GB" -FunctionName "SYSTEM" -Application "PC Cleanup" -Action "CleanupFinished" -Status "SUCCESS" -MetricValue $freedGB -MetricUnit "GB"
     Mostrar-Resultado-Limpeza -FreedGB $freedGB -BeforeGB $beforeGB -Modo $(if ($choice -eq "Yes") {"Deep Clean"} else {"Safe Clean"})
 }
 
@@ -757,7 +760,7 @@ function Otimizar-Registro {
     # ==============================================================
 
     $Global:UltimaFuncaoExecutada = "Otimizar Registro"
-    Escrever-Log -Mensagem "=== INICIO LIMPEZA DE HISTORICO ===" -FunctionName "REGISTRY" -Action "Start" -Status "INFO"
+    Escrever-Log -Mensagem "=== INICIO LIMPEZA DE HISTORICO ===" -FunctionName "SYSTEM" -Action "Start" -Status "INFO"
 
     # ----------------------------------------------------------
     # All MRU paths are hardcoded (no dynamic discovery = no risk)
@@ -794,7 +797,7 @@ function Otimizar-Registro {
             } catch {}
         }
     }
-    Escrever-Log -Mensagem "Scan: $countBefore entradas encontradas" -FunctionName "REGISTRY" -Action "ScanDone" -Status "INFO"
+    Escrever-Log -Mensagem "Scan: $countBefore entradas encontradas" -FunctionName "SYSTEM" -Action "ScanDone" -Status "INFO"
 
     # ----------------------------------------------------------
     # Step 2 (40%): Clear MRU values (not the keys themselves)
@@ -863,7 +866,7 @@ function Otimizar-Registro {
                 # Reset MRUListEx to empty binary
                 Set-ItemProperty -Path $searchPath -Name "MRUListEx" -Value ([byte[]](0xFF,0xFF,0xFF,0xFF)) -ErrorAction SilentlyContinue
             }
-            Escrever-Log -Mensagem "Search history limpa: $searchCleaned termos" -FunctionName "REGISTRY" -Action "SearchCleaned" -Status "SUCCESS"
+            Escrever-Log -Mensagem "Search history limpa: $searchCleaned termos" -FunctionName "SYSTEM" -Action "SearchCleaned" -Status "SUCCESS"
         } catch {
             # Search skip logged silently
         }
@@ -874,7 +877,16 @@ function Otimizar-Registro {
     Barra-Progresso (Get-Text "Step.Reg.Done")
 
     $totalCleaned = $mruCleaned + $jumplistCleaned + $searchCleaned
-    Escrever-Log -Mensagem "=== FIM: Total=$totalCleaned (MRU=$mruCleaned Jumplist=$jumplistCleaned Search=$searchCleaned) ===" -FunctionName "REGISTRY" -Action "Done" -Status "SUCCESS"
+    # FIX (v1.3.0): o evento final usava -Action "Done", que esta na
+    # lista de ruido filtrada antes de chegar na dashboard (pensada
+    # originalmente pra passos internos genericos de OUTRAS funcoes,
+    # como Diagnostico-PC). Isso fazia o resumo da limpeza de registro
+    # - com a contagem real de entradas limpas - nunca aparecer na
+    # dashboard, mesmo ja estando calculado corretamente aqui.
+    # Renomeado para "RegistryCleanupDone" (especifico, nao filtrado),
+    # com -Application para agrupar bonito na dashboard, e -MetricValue
+    # para o total virar um numero agregavel (SUM/AVG), nao so texto.
+    Escrever-Log -Mensagem "Limpeza de registro concluida: $totalCleaned entradas removidas (MRU=$mruCleaned Jumplist=$jumplistCleaned Busca=$searchCleaned)" -FunctionName "SYSTEM" -Application "Otimizar Registro" -Action "RegistryCleanupDone" -Status "SUCCESS" -MetricValue $totalCleaned -MetricUnit "entradas"
     Mostrar-Resultado-Registro -MruCleaned $mruCleaned -OrphansCleaned $jumplistCleaned -EnvCleaned $searchCleaned -TotalBefore $countBefore
 }
 
