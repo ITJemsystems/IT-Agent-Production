@@ -61,18 +61,35 @@ $Global:SUPABASE_ANON_LOG = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdX
 # ==============================================================
 # HELPER: Normalize-StringUTF8
 # ==============================================================
-# Ensures a string is properly encoded as UTF-8.
-# Fixes accented characters on PT-BR Windows (CP1252 -> UTF-8).
+# FIX (v1.3.2): esta funcao fazia EXATAMENTE O CONTRARIO do que o
+# nome promete, e era a causa real dos nomes com acento aparecendo
+# corrompidos na dashboard (ex: "Jose" virando "JosÃ©").
+#
+# O QUE ELA FAZIA DE ERRADO:
+#   1. Pega uma string .NET normal, ja corretamente codificada em
+#      Unicode (que e como $env:USERNAME, $env:COMPUTERNAME, etc.
+#      SEMPRE chegam no PowerShell - nao precisam de nenhum ajuste)
+#   2. Converte essa string para bytes usando a ANSI/codepage do
+#      Windows (Encoding.Default - ex: Windows-1252 no PT-BR)
+#   3. Pega esses MESMOS BYTES ANSI e os decodifica como se fossem
+#      UTF-8 (Encoding.UTF8.GetString) - só que bytes ANSI nao sao
+#      uma sequencia UTF-8 valida, entao o resultado sai corrompido
+#      (exatamente o padrao "Ã©" no lugar de "é" que se via na
+#      dashboard).
+#
+# CORRECAO: a funcao agora so devolve a string como recebeu, sem
+# nenhuma conversao. $bodyObject (username, computername, mensagem,
+# etc.) ja chega correto; quem cuida da codificacao UTF-8 de verdade
+# e o ConvertTo-Json + [System.Text.Encoding]::UTF8.GetBytes() logo
+# abaixo, que ja estava certo - o problema era so essa "normalizacao"
+# extra corrompendo o texto ANTES disso.
+#
+# Mantida como funcao (em vez de remover as chamadas em Escrever-Log)
+# para nao precisar tocar em mais nenhum outro lugar do arquivo.
 # ==============================================================
 function Normalize-StringUTF8 {
     param([string]$InputString)
-    if ([string]::IsNullOrEmpty($InputString)) { return $InputString }
-    try {
-        $ansiBytes = [System.Text.Encoding]::Default.GetBytes($InputString)
-        return [System.Text.Encoding]::UTF8.GetString($ansiBytes)
-    } catch {
-        return $InputString
-    }
+    return $InputString
 }
 
 function Escrever-Log {
