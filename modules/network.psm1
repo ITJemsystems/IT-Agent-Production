@@ -52,7 +52,7 @@ function Diagnostico-Rede {
     $ipv4       = $ipInfo.IPv4Address.IPAddress
     $gateway    = $ipInfo.IPv4DefaultGateway.NextHop
     $dnsServers = ($ipInfo.DnsServer.ServerAddresses -join ", ")
-    Escrever-Log -Mensagem "Interface=$interface | IP=$ipv4 | Gateway=$gateway | Speed=$speed" -FunctionName "NETWORK" -Action "InterfaceDetect" -Status "INFO"
+    Escrever-Log -Mensagem "Interface=$interface | IP=$ipv4 | Gateway=$gateway | Speed=$speed" -FunctionName "NETWORK" -Application "Diagnostico de Rede" -Action "InterfaceDetect" -Status "INFO"
 
     # Step 2 (40%): Test latency - threshold is 15ms (corporate standard)
     Barra-Progresso (Get-Text "Step.Net.Latency")
@@ -67,10 +67,10 @@ function Diagnostico-Rede {
         } else {
             "Ping dentro do esperado: $pingRounded ms (menor que 15ms)"
         }
-        Escrever-Log -Mensagem $pingMsg -FunctionName "NETWORK" -Action "LatencyTest" -Status $(if ($pingRounded -gt 15) {"WARNING"} else {"SUCCESS"}) -MetricValue $pingRounded -MetricUnit "ms"
+        Escrever-Log -Mensagem $pingMsg -FunctionName "NETWORK" -Application "Diagnostico de Rede" -Action "LatencyTest" -Status $(if ($pingRounded -gt 15) {"WARNING"} else {"SUCCESS"}) -MetricValue $pingRounded -MetricUnit "ms"
     } else {
         $pingRounded = $null
-        Escrever-Log -Mensagem "Sem resposta de latencia (host de teste inacessivel)" -FunctionName "NETWORK" -Action "LatencyTest" -Status "FAIL"
+        Escrever-Log -Mensagem "Sem resposta de latencia (host de teste inacessivel)" -FunctionName "NETWORK" -Application "Diagnostico de Rede" -Action "LatencyTest" -Status "FAIL"
     }
 
     # Step 3 (60%): Test DNS resolution - resolves google.com as a known reliable domain
@@ -78,10 +78,10 @@ function Diagnostico-Rede {
     try {
         Resolve-DnsName google.com -ErrorAction Stop | Out-Null
         $dnsOk = $true
-        Escrever-Log -Mensagem "Resolucao de DNS funcionando normalmente" -FunctionName "NETWORK" -Action "DNSTest" -Status "SUCCESS"
+        Escrever-Log -Mensagem "Resolucao de DNS funcionando normalmente" -FunctionName "NETWORK" -Application "Diagnostico de Rede" -Action "DNSTest" -Status "SUCCESS"
     } catch {
         $dnsOk = $false
-        Escrever-Log -Mensagem "Erro de DNS: nao foi possivel resolver nomes de dominio" -FunctionName "NETWORK" -Action "DNSTest" -Status "FAIL"
+        Escrever-Log -Mensagem "Erro de DNS: nao foi possivel resolver nomes de dominio" -FunctionName "NETWORK" -Application "Diagnostico de Rede" -Action "DNSTest" -Status "FAIL"
     }
 
     # Step 4 (80%): Auto-repair if latency > 15ms OR DNS failed
@@ -100,9 +100,9 @@ function Diagnostico-Rede {
     if ($precisaReparo) {
         try {
             & "$env:SystemRoot\System32\ipconfig.exe" /flushdns | Out-Null
-            Escrever-Log -Mensagem "Flush DNS aplicado com sucesso" -FunctionName "NETWORK" -Action "FlushDNS" -Status "SUCCESS"
+            Escrever-Log -Mensagem "Flush DNS aplicado com sucesso" -FunctionName "NETWORK" -Application "Diagnostico de Rede" -Action "FlushDNS" -Status "SUCCESS"
         } catch {
-            Escrever-Log -Mensagem "Falha ao aplicar Flush DNS" -FunctionName "NETWORK" -Action "FlushDNS" -Status "ERROR"
+            Escrever-Log -Mensagem "Falha ao aplicar Flush DNS" -FunctionName "NETWORK" -Application "Diagnostico de Rede" -Action "FlushDNS" -Status "ERROR"
         }
 
         try {
@@ -110,14 +110,14 @@ function Diagnostico-Rede {
             Start-Sleep -Seconds 2
             & "$env:SystemRoot\System32\ipconfig.exe" /renew   | Out-Null
             Start-Sleep -Seconds 3
-            Escrever-Log -Mensagem "IP renovado com sucesso" -FunctionName "NETWORK" -Action "RenewIP" -Status "SUCCESS"
+            Escrever-Log -Mensagem "IP renovado com sucesso" -FunctionName "NETWORK" -Application "Diagnostico de Rede" -Action "RenewIP" -Status "SUCCESS"
         } catch {
-            Escrever-Log -Mensagem "Falha ao renovar IP" -FunctionName "NETWORK" -Action "RenewIP" -Status "ERROR"
+            Escrever-Log -Mensagem "Falha ao renovar IP" -FunctionName "NETWORK" -Application "Diagnostico de Rede" -Action "RenewIP" -Status "ERROR"
         }
 
         $reparoAplicado = $true
     } else {
-        Escrever-Log -Mensagem "Internet saudavel - nenhum reparo necessario" -FunctionName "NETWORK" -Action "InternetHealthy" -Status "SUCCESS"
+        Escrever-Log -Mensagem "Internet saudavel - nenhum reparo necessario" -FunctionName "NETWORK" -Application "Diagnostico de Rede" -Action "InternetHealthy" -Status "SUCCESS"
     }
 
     # Step 5 (100%): Check Wi-Fi driver version via WMI (Win32_PnPSignedDriver)
@@ -573,7 +573,7 @@ function Verificar-IP-DNS {
 
     Barra-Progresso (Get-Text "Step.IPDNS.Done")
 
-    Escrever-Log -Mensagem "Interface=$iface | IP=$ipv4 | Tipo=$prefixOrigin | DNS=$($dnsServers -join ', ')" -FunctionName "NETWORK" -Action "IPDNSCheck" -Status "INFO"
+    Escrever-Log -Mensagem "Interface=$iface | IP=$ipv4 | Tipo=$prefixOrigin | DNS=$($dnsServers -join ', ')" -FunctionName "NETWORK" -Application "Status IP/DNS" -Action "IPDNSCheck" -Status "INFO"
     Escrever-Log -Mensagem "=== FIM VERIFICACAO IP/DNS ===" -FunctionName "NETWORK" -Action "DiagEnd" -Status "INFO"
 
     Mostrar-Resultado-IP-DNS -iface $iface -ipv4 $ipv4 -isStatic $isStatic -dnsServers $dnsServers
